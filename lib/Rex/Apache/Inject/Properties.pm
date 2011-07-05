@@ -104,29 +104,40 @@ sub _find_and_parse_templates {
    my $template_params = _get_template_params($template_file);
 
    for my $file (`find . -name '$template_pattern'`) {
+      $/ = "\n";
       chomp $file;
       Rex::Logger::debug("Opening file $file");
+
       open(my $fh, "<$file") or die($!);
       my %con;
       while (my $line = <$fh>) {
          chomp $line;
+         $line =~ s/\r//gs;
          next if($line =~ /^#/);
          next if($line =~ /^$/);
-         $line =~ s/\r//gs;
 
-         my ($key, $val) = $line =~ m/^(.*?)\s+?=\s+?(.*)$/;
-         next unless $key;
+         my ($key, $val) = $line =~ m/^(.*?)\s?[=:\t]\s?(.*)$/;
+				 Rex::Logger::debug("key: -$key- => val: -$val-");
+
+				 unless($key) {
+					Rex::Logger::info("Parser Error in $file:");
+					Rex::Logger::info("($.)===$line===");
+					next;
+				 }
          $val = "" unless $val;
-
          $con{$key} = $val;
       }
       close($fh);
 
       for my $k (keys %$template_params) {
+			   Rex::Logger::debug("(t): -$k- => -" . $template_params->{$k} . "-");
          if(exists $con{$k}) {
             Rex::Logger::info("setting $k to " . $template_params->{$k} . " ($file)");
             $con{$k} = $template_params->{$k};
          }
+#				 else {
+#				 	  Rex::Logger::info("$k doesn't exists in $file");
+#				 }
       }
 
       my $new_file_name = $real_name_from_template?&$real_name_from_template($file):$file;
@@ -197,14 +208,16 @@ sub _get_pack_command {
 # read the template file and return a hashref.
 sub _get_template_params {
    my %inject;
+
    open(my $fh, "<$work_dir/$template_file") or die($!);
    while (my $line = <$fh>) {
       chomp $line;
+      $line =~ s/\r//gs;
       next if($line =~ /^#/);
       next if($line =~ /^$/);
       $line =~ s/\r//gs;
 
-      my ($key, $val) = ($line =~ m/^(.*?)\s?[=:]\s?(.*)$/);
+      my ($key, $val) = $line =~ m/^(.*?)\s?[=:\t]\s?(.*)$/;
       $inject{$key} = $val;
    }
    close($fh);
