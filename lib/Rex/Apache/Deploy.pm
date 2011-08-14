@@ -103,14 +103,29 @@ use strict;
 use warnings;
 
 use Data::Dumper;
+use Rex::Commands::Run;
+use Rex::Logger;
 
-our $VERSION = '0.5.2';
+use Cwd qw(getcwd);
+
+our $VERSION = '0.6.0';
+
+###### commonly used
+our @COMMONS = ();
+
 
 sub import {
 
    my ($call_class) = caller;
+   return unless $call_class;
 
    die("Invalid input format") unless($_[1] =~ m/^[a-z0-9_]+$/i);
+
+   no strict 'refs';
+   for my $exp (@COMMONS) {
+      *{"${call_class}::$exp"} = \&$exp;
+   }
+   use strict;
 
    eval "use $_[0]::$_[1] '$call_class';";
 
