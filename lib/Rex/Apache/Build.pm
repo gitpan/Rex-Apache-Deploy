@@ -21,7 +21,20 @@ With this module you can prepare your WebApp for deployment.
  get_version_from "webapp/index.php", qr{\$VERSION=([^;]+);};
      
  task "build", sub {
-    yui compress => "file1.js", "file2.js", "file3.css";
+    sprocketize;
+    sprocketize "app/assets/javascript/*.js",
+      out => "public/js/sprockets.js";
+        
+    coffee;
+    coffee "app/assets/coffee",
+      out => "public/js";
+      
+    sass;
+    sass "app/assets/stylesheets",
+      out => "public/stylesheets";
+          
+    yui;
+    yui compress => "file1.js", "file2.js", "file3.css"; 
     yui compress => glob("public/javascript/*.js"), glob("public/css/*.css");
          
     build;
@@ -41,6 +54,8 @@ With this module you can prepare your WebApp for deployment.
    
 package Rex::Apache::Build;
    
+our $VERSION = "0.7.0";
+
 use strict;
 use warnings;
 
@@ -51,9 +66,14 @@ require Exporter;
 use base qw(Exporter);
 use vars qw(@EXPORT);
     
-@EXPORT = qw(yui yui_path build get_version_from get_version);
+@EXPORT = qw(build 
+               get_version_from get_version 
+               yui yui_path 
+               coffee coffee_path
+               sprocketize sprocketize_path
+               sass sass_path);
 
-use vars qw($yui_path $APP_VERSION);
+use vars qw($yui_path $coffee_path $sprocketize_path $sass_path $APP_VERSION);
 
 use Rex::Commands::Run;
 use Rex::Logger;
@@ -71,12 +91,57 @@ sub yui_path {
    }
 }
 
+=item coffee_path($path_to_coffee)
+
+This function sets the path to the coffee compiler. If a relative path is given it will search from the path where the Rexfile is in.
+
+=cut
+sub coffee_path {
+   ($coffee_path) = @_;
+
+   unless($coffee_path =~ m/^\//) {
+      $coffee_path = getcwd() . "/" . $coffee_path;
+   }
+}
+
+=item sprocketize_path($path_to_sprocketize)
+
+This function sets the path to the sprocketize compiler. If a relative path is given it will search from the path where the Rexfile is in.
+
+=cut
+sub sprocketize_path {
+   ($sprocketize_path) = @_;
+
+   unless($sprocketize_path =~ m/^\//) {
+      $sprocketize_path = getcwd() . "/" . $sprocketize_path;
+   }
+}
+
+=item sass_path($path_to_sass)
+
+This function sets the path to the sass compiler. If a relative path is given it will search from the path where the Rexfile is in.
+
+=cut
+sub sass_path {
+   ($sass_path) = @_;
+
+   unless($sass_path =~ m/^\//) {
+      $sass_path = getcwd() . "/" . $sass_path;
+   }
+}
+
+
+
 =item yui($action, @files)
 
 Run a yui command.
 
  task "build", sub {
+    # this will compress the given files
     yui compress => "file1.js", "file2.js", ...;
+     
+    # yui without any parameters will compress all files in public/javascripts
+    yui;
  };
 
 =cut
@@ -87,11 +152,20 @@ sub yui {
       die("No yuicompressor.jar found. Please download this file and define its location with yui_path '/path/to/yuicompress.jar';");
    }
 
-   if($action eq "compress") {
+   unless($action) {
+      $action = "compress";
+   }
+
+   unless(@data) {
+      @data = glob("public/javascripts/*.js");
+   }
+
+   if($action eq "compress" || $action eq "-compress") {
       my @js_files  = grep { ! /\.min\.js$/  } grep { /\.js$/i } @data;
       my @css_files = grep { ! /\.min\.css$/ } grep { /\.css$/i } @data;
 
       if(@js_files) {
+         Rex::Logger::info("Compressing javascript files");
          for my $file (@js_files) {
             my $new_file = $file;
             $new_file    =~ s/\.js$/.min.js/;
@@ -101,6 +175,7 @@ sub yui {
       }
 
       if(@css_files) {
+         Rex::Logger::info("Compressing css files");
          for my $file (@css_files) {
             my $new_file = $file;
             $new_file    =~ s/\.css$/.min.css/;
@@ -174,8 +249,9 @@ sub build {
       $excludes = " --exclude " . join(" --exclude ", @{$option{exclude}});
    }
 
+   Rex::Logger::info("Building: $name$version.tar.gz");
    run "tar -c $excludes --exclude '$name-*.tar.gz' --exclude '.*.sw*' --exclude '*~' --exclude Rexfile.lock --exclude Rexfile --exclude $name$version.tar.gz -z -f $old_dir/$name$version.tar.gz .\n";
-   Rex::Logger::info("Build: $name$version.tar.gz");
+   Rex::Logger::info("Your build is now available: $name$version.tar.gz");
 
    chdir($old_dir);
 }
@@ -205,6 +281,164 @@ sub get_version {
    return &$APP_VERSION();
 }
 
+
+=item sprocketize($path_to_js_files, %option)
+
+This function calls the sprocketize command with the given options.
+
+ task "build", sub {
+    sprocketize "app/javascript/*.js",
+                  include    => [qw|app/javascripts vendor/sprockets/prototype/src|],
+                  asset_root => "public/js",
+                  out        => "public/js/sprockets.js";
+     
+    # to include more use an arrayRef
+    sprocketize ["app/javascript/*.js", "app/javascript/po/*.js"],
+                  include    => [qw|app/javascripts vendor/sprockets/prototype/src|],
+                  asset_root => "public/js",
+                  out        => "public/js/sprockets.js";
+         
+    # if called without parameters
+     
+    sprocketize;
+     
+    # it will use the following defaults:
+    # - javascript (sprockets) in assets/javascripts/*.js
+    # - include  assets/javascripts
+    # - asset_root public
+    # - out public/${name_of_directory_where_Rexfile_lives}.js
+ };
+
+=cut
+
+sub sprocketize {
+   my ($files, %option) = @_;
+
+   my $dirname = basename(getcwd());
+
+   unless($sprocketize_path) {
+      $sprocketize_path = "sprocketize";
+   }
+
+   unless($files) {
+      $files = ["assets/javascripts/*.js"];
+   }
+
+   if(! exists $option{out}) {
+      $option{out} = "public/$dirname.js";
+   }
+
+   if(! exists $option{asset_root}) {
+      $option{asset_root} = "public";
+   }
+
+   if(! exists $option{include}) {
+      $option{include} = ["app/javascripts"];
+   }
+
+   if(ref($files) ne "ARRAY") {
+      $files = [ $files ];
+   }
+
+   my $files_str = join(" ", @{$files});
+   my $includes = " -I " . join(" -I ", @{$option{include}});
+
+   Rex::Logger::info("Sprocketizing...");
+   run "$sprocketize_path $includes --asset-root=" . $option{asset_root} . " $files_str > " . $option{out};
+   if($? == 0) {
+      Rex::Logger::info("...done.");
+   }
+   else {
+      Rex::Logger::info("Error running sprocketize");
+      die("Error running sprocketize");
+   }
+}
+
+=item coffee($path, %options)
+
+Compile coffee files to javascript.
+
+ task "build", sub {
+    # this command will build all files in "coffeesrc" and
+    # write the output to "javascripts"
+    coffee "coffeesrc",
+         out  => "javascripts";
+     
+    # without parameters it will build all files in assets/coffee 
+    # and write the output to public/javascripts.
+    coffee;
+ };
+
+=cut
+sub coffee {
+   my ($path, %option) = @_;
+
+   unless($coffee_path) {
+      $coffee_path = "coffee";
+   }
+
+   unless($path) {
+      $path = "assets/coffee";
+   }
+
+   if(! exists $option{out}) {
+      $option{out} = "public/javascripts";
+   }
+
+   Rex::Logger::info("Building coffee script files...");
+   my $ret = run "coffee -o " . $option{out} . " -c " . $path . " 2>&1";
+
+   if($? == 0) {
+      Rex::Logger::info("...done.");
+   }
+   else {
+      Rex::Logger::info("Error building coffeescripts. $ret");
+      die("Error building coffeescripts.");
+   }
+}
+
+=item sass($input_dir, %option)
+
+This command will compile all sass files in $input_dir.
+
+ task "build", sub {
+    # this command will compile all sass files from app/assets/stylesheets
+    # and put the output into public/stylesheets.
+    sass "app/assets/stylesheets",
+      out => "public/stylesheets";
+    
+    # The default is to build all files in assets/sass and put the output
+    # into public/css.
+    sass;
+ };
+
+=cut
+sub sass {
+   my ($input, %option) = @_;
+
+   unless($sass_path) {
+      $sass_path = "sass";
+   }
+
+   unless($input) {
+      $input = "assets/sass";
+   }
+
+   if(! exists $option{out}) {
+      $option{out} = "public/css";
+   }
+
+   Rex::Logger::info("Building sass files...");
+   my $ret = run "$sass_path -q --update $input:" . $option{out} . " 2>&1";
+
+   if($? == 0) {
+      Rex::Logger::info("...done.");
+   }
+   else {
+      Rex::Logger::info("Failed building sass files. $ret");
+      die("Failed building sass files.");
+   }
+}
 
 =back
 

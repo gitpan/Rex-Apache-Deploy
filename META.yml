@@ -1,16 +1,18 @@
 --- #YAML:1.0
 name:               Rex-Apache-Deploy
-version:            0.6.0
+version:            0.7.0
 abstract:           ~
 author:  []
-license:            GPL
+license:            GPLv3
 distribution_type:  module
 configure_requires:
     ExtUtils::MakeMaker:  0
 build_requires:
     ExtUtils::MakeMaker:  0
 requires:
-    Rex:  >=0.12.0
+    LWP::Simple:  0
+    Rex:          >=0.12.0
+    YAML:         0
 no_index:
     directory:
         - t
