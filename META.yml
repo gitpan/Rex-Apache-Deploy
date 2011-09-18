@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Rex-Apache-Deploy
-version:            0.7.0
+version:            0.8.0
 abstract:           ~
 author:  []
 license:            GPLv3
