@@ -13,6 +13,7 @@ use Rex::Commands::Run;
 use Rex::Commands::Fs;
 use Rex::Commands::Upload;
 use Rex::Commands;
+use Rex::Config;
 use File::Basename qw(dirname basename);
 use Cwd qw(getcwd);
 
@@ -33,14 +34,24 @@ sub inject {
 
    my $option = { @options };
 
-   my $cmd1 = sprintf (_get_extract_command($to), "../$to");
-   my $cmd2 = sprintf (_get_pack_command($to), "../$to", ".");
+   my ($cmd1, $cmd2);
+
+   if(is_file($to)) {
+      my $tmp_to = $to;
+      if($tmp_to !~ m/^\//) { $tmp_to = "../$tmp_to"; }
+
+      $cmd1 = sprintf (_get_extract_command($to), "$tmp_to");
+      $cmd2 = sprintf (_get_pack_command($to), "$tmp_to", ".");
+
+      mkdir("tmp");
+      chdir("tmp");
+      run $cmd1;
+   }
+   else {
+      chdir($to);
+   }
 
    my $template_params = _get_template_params($template_file);
-
-   mkdir("tmp");
-   chdir("tmp");
-   run $cmd1;
 
    if(exists $option->{"extract"}) {
       for my $file_pattern (@{$option->{"extract"}}) {
@@ -82,18 +93,23 @@ sub inject {
 
    _find_and_parse_templates();
 
-   if(exists $option->{"pre_pack_hook"}) {
-      &{ $option->{"pre_pack_hook"} };
-   }
+   if(is_file("../$to")) {
+      if(exists $option->{"pre_pack_hook"}) {
+         &{ $option->{"pre_pack_hook"} };
+      }
 
-   run $cmd2;
+      run $cmd2;
 
-   if(exists $option->{"post_pack_hook"}) {
-      &{ $option->{"post_pack_hook"} };
+      if(exists $option->{"post_pack_hook"}) {
+         &{ $option->{"post_pack_hook"} };
+      }
    }
 
    chdir("..");
-   system("rm -rf tmp");
+
+   if(is_file($to)) {
+      system("rm -rf tmp");
+   }
 }
 
 sub _find_and_parse_templates {
@@ -106,6 +122,9 @@ sub _find_and_parse_templates {
    }
 
    for my $file (`$find`) {
+      next if($file =~ m/\.svn\//);
+      next if($file =~ m/\.git\//);
+
       chomp $file;
       my $content;
       { local $/ = undef; local *FILE; open FILE, "<$file"; $content = <FILE>; close FILE }
@@ -129,7 +148,7 @@ sub _find_and_parse_templates {
 
 ############ configuration functions #############
 
-sub generate_real_name {
+sub generate_real_name(&) {
    $real_name_from_template = shift;
 }
 
@@ -183,7 +202,20 @@ sub _get_pack_command {
 sub _get_template_params {
    my ($template_file) = @_;
    my @lines;
-   open(my $fh, "<", $work_dir . "/" . $template_file) or die($!);
+
+   my $t_file;
+   if($template_file =~ m/^\//) {
+      $t_file = $template_file;
+   }
+   else {
+      $t_file = "$work_dir/$template_file";
+   }
+
+   if(-f "$t_file." . Rex::Config->get_environment) {
+      $t_file = "$t_file." . Rex::Config->get_environment;
+   }
+
+   open(my $fh, "<", $t_file) or die($!);
    @lines = <$fh>;
    close($fh);
    chomp @lines;

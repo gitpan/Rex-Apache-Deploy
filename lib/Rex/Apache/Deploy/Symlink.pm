@@ -75,6 +75,10 @@ sub deploy {
    use strict;
    use warnings;
 
+   unless(is_dir($deploy_to)) {
+      mkdir $deploy_to;
+   }
+
    unless(is_writeable($deploy_to)) {
       Rex::Logger::info("No write permission to $deploy_to");
       exit 1;
@@ -140,8 +144,12 @@ sub get_deploy_directory_for {
    unless($generate_deploy_directory) {
       $generate_deploy_directory = sub {
          my ($file) = @_;
-         $file =~ m/-([0-9\._~]+)\.(zip|tar\.gz|war|tar\.bz2|jar)$/;
-         return $1;
+         if($file =~ m/-([0-9\._~\-]+)\.(zip|tar\.gz|war|tar\.bz2|jar)$/) {
+            return $1;
+         }
+         else {
+            return "" . time;
+         }
       };
    }
    my $gen_dir_name = &$generate_deploy_directory($file);

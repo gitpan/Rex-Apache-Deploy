@@ -21,6 +21,7 @@ use Rex::Commands::Run;
 use Rex::Commands::Fs;
 use Rex::Commands::Upload;
 use Rex::Commands;
+use Rex::Config;
 use File::Basename qw(dirname basename);
 use Cwd qw(getcwd);
 
@@ -41,8 +42,11 @@ sub inject {
 
    my $option = { @options };
 
-   my $cmd1 = sprintf (_get_extract_command($to), "../$to");
-   my $cmd2 = sprintf (_get_pack_command($to), "../$to", ".");
+   my $tmp_to = $to;
+   if($tmp_to !~ m/^\//) { $tmp_to = "../$tmp_to"; }
+
+   my $cmd1 = sprintf (_get_extract_command($to), "$tmp_to");
+   my $cmd2 = sprintf (_get_pack_command($to), "$tmp_to", ".");
 
    my $template_params = _get_template_params($template_file);
 
@@ -126,7 +130,7 @@ sub _find_and_parse_templates {
          next if($line =~ /^#/);
          next if($line =~ /^$/);
 
-         my ($key, $val) = $line =~ m/^(.*?)\s?[=:\t]\s?(.*)$/;
+         my ($key, $val) = $line =~ m/^(.*?)\s?[=:]\s?(.*)$/;
 				 Rex::Logger::debug("key: -$key- => val: -$val-");
 
 				 unless($key) {
@@ -219,7 +223,20 @@ sub _get_pack_command {
 sub _get_template_params {
    my %inject;
 
-   open(my $fh, "<$work_dir/$template_file") or die($!);
+   my $t_file;
+
+   if($template_file =~ m/^\//) {
+      $t_file = $template_file;
+   }
+   else {
+      $t_file = "$work_dir/$template_file";
+   }
+
+   if(-f "$t_file." . Rex::Config->get_environment) {
+      $t_file = "$t_file." . Rex::Config->get_environment;
+   }
+
+   open(my $fh, "<", $t_file) or die($!);
    while (my $line = <$fh>) {
       chomp $line;
       $line =~ s/\r//gs;
