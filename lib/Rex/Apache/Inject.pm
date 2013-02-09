@@ -151,7 +151,7 @@ This will search the file I<application.yml> inside of myapp.tar.gz and replace 
 
 package Rex::Apache::Inject;
 
-our $VERSION = "0.9.0";
+our $VERSION = "0.11.0";
 
 use strict;
 use warnings;
@@ -161,6 +161,8 @@ use Data::Dumper;
 sub import {
 
    my ($call_class) = caller;
+
+   return unless $_[1];
 
    die("Invalid input format") unless($_[1] =~ m/^[a-z0-9_]+$/i);
 

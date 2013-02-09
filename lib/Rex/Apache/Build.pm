@@ -40,7 +40,7 @@ With this module you can prepare your WebApp for deployment.
     build;
         
     build "webapp",
-      path => "webapp/",
+      source  => "webapp/",
       version => "1.0";
  };
 
@@ -54,7 +54,7 @@ With this module you can prepare your WebApp for deployment.
    
 package Rex::Apache::Build;
    
-our $VERSION = "0.9.0";
+our $VERSION = "0.11.0";
 
 use strict;
 use warnings;
@@ -148,6 +148,8 @@ Run a yui command.
 sub yui {
    my ($action, @data) = @_;
 
+   $yui_path ||= "yuicompressor.jar";
+
    unless(-f $yui_path) {
       die("No yuicompressor.jar found. Please download this file and define its location with yui_path '/path/to/yuicompress.jar';");
    }
@@ -213,7 +215,8 @@ This function builds your package. Currently only tar.gz packages are supported.
     build "my-web-app",
        path => "html",
        version => "1.0",
-       exclude => ["yuicompressor.jar", "foobar.html"];
+       exclude => ["yuicompressor.jar", "foobar.html"],
+       type => "tgz";
  };
 
 =cut
@@ -224,39 +227,31 @@ sub build {
       $name = basename(getcwd());
    }
 
-   my $dir = getcwd();
-
-   if(exists $option{path}) {
-      $dir = $option{path};
+   if(! %option) {
+      if(Rex::Config->get("package_option")) {
+         %option = %{ Rex::Config->get("package_option") };
+      }
    }
 
-   my $version = "";
-
-   if($APP_VERSION) {
-      $version = "-" . &$APP_VERSION();
-   }
-
-   if(exists $option{version}) {
-      $version = "-".$option{version};
+   if(! exists $option{version}) {
+      $option{version} = &$APP_VERSION();
    }
 
    my $old_dir = getcwd();
-   chdir($dir);
 
-   my $excludes = "";
+   my $type = $option{type} || "tgz";
 
-   if(exists $option{exclude}) {
-      $excludes = " --exclude " . join(" --exclude ", @{$option{exclude}});
+   my $klass = "Rex::Apache::Build::$type";
+   eval "use $klass";
+   if($@) {
+      die("Can't find build class for type: $type");
    }
 
-   Rex::Logger::info("Building: $name$version.tar.gz");
-   if($^O =~ m/^MSWin/i) {
-      run "tar -c $excludes --exclude \"$name-*.tar.gz\" --exclude \".*.sw*\" --exclude \"*~\" --exclude Rexfile.lock --exclude Rexfile --exclude $name$version.tar.gz -z -f $old_dir/$name$version.tar.gz .";
-   }
-   else {
-      run "tar -c $excludes --exclude '$name-*.tar.gz' --exclude '.*.sw*' --exclude '*~' --exclude Rexfile.lock --exclude Rexfile --exclude $name$version.tar.gz -z -f $old_dir/$name$version.tar.gz .";
-   }
-   Rex::Logger::info("Your build is now available: $name$version.tar.gz");
+   Rex::Logger::debug("Using Buildclass: $klass");
+   $option{name} = $name;
+   my $build = $klass->new(%option);
+
+   $build->build;
 
    chdir($old_dir);
 }
@@ -268,6 +263,11 @@ Get the version out of a file.
 =cut
 sub get_version_from {
    my ($file, $regex) = @_;
+
+   if(ref($file) eq "CODE") {
+      $APP_VERSION = $file;
+      return;
+   }
 
    $APP_VERSION = sub {
 

@@ -21,4 +21,4 @@ requires:
   LWP::Simple: 0
   Rex: v0.30.0
   YAML: 0
-version: v0.10.1
+version: v0.11.0

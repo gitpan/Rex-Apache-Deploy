@@ -139,7 +139,7 @@ use Rex::Logger;
 
 use Cwd qw(getcwd);
 
-our $VERSION = '0.10.1';
+our $VERSION = '0.11.0';
 
 ###### commonly used
 our @COMMONS = ();
@@ -149,6 +149,8 @@ sub import {
 
    my ($call_class) = caller;
    return unless $call_class;
+
+   return unless $_[1];
 
    die("Invalid input format") unless($_[1] =~ m/^[a-z0-9_]+$/i);
 
